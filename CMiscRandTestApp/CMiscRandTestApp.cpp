@@ -3,7 +3,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <immintrin.h>
+#include <intrin.h>
 #include "MiscRand.h"
+#include "cpudetect.h"
 
 #define	RAND_SEED			0
 #define RAND_SEQUENCE_LEN	8
@@ -11,10 +14,12 @@
 #define GAUSSIAN_BIN_RANGE		4			// We try to put the generated Gaussian random numbers into bins in
 											// [-GAUSSIAN_BIN_RANGE, GAUSSIAN_BIN_RANGE]
 #define NUM_GAUSSIAN_BINS		32
+#define NUM_RDRAND_ITERATIONS	1000000
+#define RDRAND_RETRY            10
 
 int main(int argc, char* argv[])
 {
-	unsigned long	i;
+	unsigned long   i;
 #if 0
 	// In the first part, we evaluate how soon rand() seemingly repeats its returned value.  Note
 	// that this does not necessarily equal the period of the pseudo-random sequence rand() generates.
@@ -113,7 +118,7 @@ int main(int argc, char* argv[])
 				uCount);
 		}
 	}
-#endif
+
 	// In the fourth part, we call the Gaussian random number generator many times and have a rough idea of the
 	// "Bell curve".
 	{
@@ -140,8 +145,93 @@ int main(int argc, char* argv[])
 		// Printing out the Gaussian bin counts.
 		for (i = 0; i < NUM_GAUSSIAN_BINS; i++)
 			fprintf(stdout, "%2dth bin (from %+f to %+f) contains %5d samples.\n", i,
-					(-GAUSSIAN_BIN_RANGE + i*dfGaussianBinGap), (-GAUSSIAN_BIN_RANGE + (i+1)*dfGaussianBinGap),
-					uGaussianBinCounts[i]);
+				(-GAUSSIAN_BIN_RANGE + i * dfGaussianBinGap), (-GAUSSIAN_BIN_RANGE + (i + 1) * dfGaussianBinGap),
+				uGaussianBinCounts[i]);
+	}
+#endif
+	// In the fifth part, we generate many uniformly distributed random variables in [0, 1) with Intel/AMD
+	//     RDRAND instruction.
+	{
+		unsigned int      uRdSample;
+		double            fRdSample;
+		double            fSumSamples = 0.0, fSumSampleSquares = 0.0;
+		double            fSumCycles = 0.0, fNumRetries = 0.0;
+		unsigned int      uRetryCount, uNumGoodSamples, uMaxRetries = 0;
+		unsigned int      uMinRDCycles = UINT_MAX, uMinRDCount = 0;
+		unsigned long long  ulClockBefore, ulClockAfter;
+
+		if (!isIntel() || !supportRDRAND())
+		{
+			// Generating error messages; we might want to fall back to LargerRand() or some
+			//     other pseudo random number generator.
+			fprintf(stderr, "The hardware does not make use of RDRAND instructions.\n");
+
+			return 1;
+		}
+
+		uNumGoodSamples = 0;
+		for (i = 0; i < NUM_RDRAND_ITERATIONS; i++) {
+			uRetryCount = 0;
+
+			ulClockBefore = __rdtsc();
+			while (uRetryCount < RDRAND_RETRY)
+			{
+				if (_rdrand32_step(&uRdSample))
+					break;
+				uRetryCount++;
+			}
+			ulClockAfter = __rdtsc();
+
+			// If we retried RDRAND_RETRY times without generating a good uRdSample, we
+			//     skip over the statistics for this iteration.
+			if (uRetryCount == RDRAND_RETRY)
+				continue;
+
+			// fRdSample is the uniformly distributed random number in [0, 1).
+			fRdSample = (double)uRdSample/UINT_MAX;
+
+			// Updating all the related statistics.
+			fSumSamples += fRdSample;
+			fSumSampleSquares += fRdSample*fRdSample;
+
+			unsigned long   uElapsedCycles = (unsigned long) (ulClockAfter - ulClockBefore);
+			fSumCycles += (double)uElapsedCycles;
+			if (uElapsedCycles == uMinRDCycles)
+			{
+				uMinRDCount++;
+			}
+			else if (uElapsedCycles < uMinRDCycles)
+			{
+				// We have a new minimum cycle count from RDRAND.
+				uMinRDCycles = uElapsedCycles;
+				uMinRDCount = 1;
+			}
+
+			fNumRetries += (double)uRetryCount;
+			uMaxRetries = (uRetryCount > uMaxRetries) ? uRetryCount : uMaxRetries;
+			uNumGoodSamples++;
+		}
+
+		// Showing all the statistics.
+		if (uNumGoodSamples)
+		{
+			// E(X) = Sum(X)/N
+			fSumSamples /= uNumGoodSamples;
+			// Var(X) = Sum(X^2)/N - E(X)*E(X)
+			fSumSampleSquares = fSumSampleSquares / uNumGoodSamples - fSumSamples * fSumSamples;
+
+			fSumCycles /= uNumGoodSamples;
+			fNumRetries /= uNumGoodSamples;
+			fprintf(stdout, "Mean of all %u samples: %lf\n", uNumGoodSamples, fSumSamples);
+			fprintf(stdout, "Variance of all %u samples: %lf\n", uNumGoodSamples, fSumSampleSquares);
+			fprintf(stdout, "On average each 32-bit RDRAND call costs %lf cycles.\n", fSumCycles);
+			fprintf(stdout, "Minimum cycles RDRAND took is %lu cycles, occurring %lu times.\n", uMinRDCycles, uMinRDCount);
+			fprintf(stdout, "On average we had %lf retries for RDRAND; at most we invoked %u retries for one RDRAND.\n", fNumRetries, uMaxRetries);
+		}
+		else
+		{
+			fprintf(stderr, "We did not generate any good random number samples in %u tries.\n", NUM_RDRAND_ITERATIONS);
+		}
 	}
 
 	return 0;
