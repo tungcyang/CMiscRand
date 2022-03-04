@@ -24,10 +24,16 @@
     <ClCompile Include="GaussianRand.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="cpudetect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MiscRand.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cpudetect.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
