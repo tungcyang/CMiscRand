@@ -12,3 +12,11 @@ bool	supportRDRAND();
 // supportRDSEED() returns TRUE if the CPU where the code is executed supports
 // RDSEED feature.
 bool	supportRDSEED();
+
+// supportAVX() returns TRUE if the CPU where the code is executed supports
+// AVX feature.
+bool	supportAVX();
+
+// supportAVX2() returns TRUE if the CPU where the code is executed supports
+// AVX2 feature.
+bool	supportAVX2();

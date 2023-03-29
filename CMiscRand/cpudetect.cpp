@@ -51,7 +51,7 @@ bool	supportRDRAND()
 
 	__cpuid(cpuInfo, 1);
 	// EBX, ECX and EDX are returned in cpuInfo[1-3].
-	return !!(cpuInfo[2] & 0x4000);
+	return !!(cpuInfo[2] & 0x40000000);
 }
 
 // supportRDSEED() returns TRUE if the CPU where the code is executed supports
@@ -64,5 +64,31 @@ bool	supportRDSEED()
 
 	__cpuid(cpuInfo, 7);
 	// EBX, ECX and EDX are returned in cpuInfo[1-3].
-	return !!(cpuInfo[1] & 0x0400);
+	return !!(cpuInfo[1] & 0x00040000);
+}
+
+// supportAVX() returns TRUE if the CPU where the code is executed supports
+// AVX feature.  Please refer to
+//     https://en.wikipedia.org/wiki/CPUID
+// for more information.
+bool	supportAVX()
+{
+	int		cpuInfo[4];
+
+	__cpuid(cpuInfo, 1);
+	// EBX, ECX and EDX are returned in cpuInfo[1-3].
+	return !!(cpuInfo[2] & 0x10000000);
+}
+
+// supportAVX2() returns TRUE if the CPU where the code is executed supports
+// AVX2 feature.  Please refer to
+//     https://en.wikipedia.org/wiki/CPUID
+// for more information.
+bool	supportAVX2()
+{
+	int		cpuInfo[4];
+
+	__cpuid(cpuInfo, 7);
+	// EBX, ECX and EDX are returned in cpuInfo[1-3].
+	return !!(cpuInfo[1] & 0x00000020);
 }

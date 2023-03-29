@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
 				(-GAUSSIAN_BIN_RANGE + i * dfGaussianBinGap), (-GAUSSIAN_BIN_RANGE + (i + 1) * dfGaussianBinGap),
 				uGaussianBinCounts[i]);
 	}
-#endif
+
 	// In the fifth part, we generate many uniformly distributed random variables in [0, 1) with Intel/AMD
 	//     RDRAND instruction.
 	{
@@ -158,6 +158,7 @@ int main(int argc, char* argv[])
 		double            fSumCycles = 0.0, fNumRetries = 0.0;
 		unsigned int      uRetryCount, uNumGoodSamples, uMaxRetries = 0;
 		unsigned int      uMinRDCycles = UINT_MAX, uMinRDCount = 0;
+		unsigned int      uMaxRDCycles = 0, uMaxRDCount = 0;
 		unsigned long long  ulClockBefore, ulClockAfter;
 
 		if (!isIntel() || !supportRDRAND())
@@ -200,11 +201,21 @@ int main(int argc, char* argv[])
 			{
 				uMinRDCount++;
 			}
+			else if (uElapsedCycles == uMaxRDCycles)
+			{
+				uMaxRDCount++;
+			}
 			else if (uElapsedCycles < uMinRDCycles)
 			{
 				// We have a new minimum cycle count from RDRAND.
 				uMinRDCycles = uElapsedCycles;
 				uMinRDCount = 1;
+			}
+			else if (uElapsedCycles > uMaxRDCycles)
+			{
+				// We have a new maximum cycle count from RDRAND.
+				uMaxRDCycles = uElapsedCycles;
+				uMaxRDCount = 1;
 			}
 
 			fNumRetries += (double)uRetryCount;
@@ -226,7 +237,80 @@ int main(int argc, char* argv[])
 			fprintf(stdout, "Variance of all %u samples: %lf\n", uNumGoodSamples, fSumSampleSquares);
 			fprintf(stdout, "On average each 32-bit RDRAND call costs %lf cycles.\n", fSumCycles);
 			fprintf(stdout, "Minimum cycles RDRAND took is %lu cycles, occurring %lu times.\n", uMinRDCycles, uMinRDCount);
-			fprintf(stdout, "On average we had %lf retries for RDRAND; at most we invoked %u retries for one RDRAND.\n", fNumRetries, uMaxRetries);
+			fprintf(stdout, "Maximum cycles RDRAND took is %lu cycles, occurring %lu times.\n", uMaxRDCycles, uMaxRDCount);
+			fprintf(stdout, "On average we had %lf%% retries for RDRAND; at most we invoked %u retries for one RDRAND.\n", fNumRetries*100, uMaxRetries);
+		}
+		else
+		{
+			fprintf(stderr, "We did not generate any good random number samples in %u tries.\n", NUM_RDRAND_ITERATIONS);
+		}
+	}
+#endif
+	// In the sixth part, we generate many normally distributed random variables with SIMD and showing the performance statistics.
+	{
+		double            fRdSample;
+		double            fSumSamples = 0.0, fSumSampleSquares = 0.0;
+		double            fSumCycles = 0.0;
+		unsigned int      uNumGoodSamples;
+		unsigned int      uMinRDCycles = UINT_MAX, uMinRDCount = 0;
+		unsigned int      uMaxRDCycles = 0, uMaxRDCount = 0;
+		unsigned long long  ulClockBefore, ulClockAfter;
+		double (*GaussianRand_ptr)() = NULL;
+
+		uNumGoodSamples = 0;
+		// Using GaussianRandVec() when both AVX and AVX2 are supported.
+		GaussianRand_ptr = (supportAVX() && supportAVX2()) ? GaussianRandVec : GaussianRand;
+
+		for (i = 0; i < NUM_RDRAND_ITERATIONS; i++) {
+
+			ulClockBefore = __rdtsc();
+			fRdSample = GaussianRand_ptr();
+			ulClockAfter = __rdtsc();
+
+			// Updating all the related statistics.
+			fSumSamples += fRdSample;
+			fSumSampleSquares += fRdSample * fRdSample;
+
+			unsigned long   uElapsedCycles = (unsigned long)(ulClockAfter - ulClockBefore);
+			fSumCycles += (double)uElapsedCycles;
+			if (uElapsedCycles == uMinRDCycles)
+			{
+				uMinRDCount++;
+			}
+			else if (uElapsedCycles == uMaxRDCycles)
+			{
+				uMaxRDCount++;
+			}
+			else if (uElapsedCycles < uMinRDCycles)
+			{
+				// We have a new minimum cycle count from RDRAND.
+				uMinRDCycles = uElapsedCycles;
+				uMinRDCount = 1;
+			}
+			else if (uElapsedCycles > uMaxRDCycles)
+			{
+				// We have a new maximum cycle count from RDRAND.
+				uMaxRDCycles = uElapsedCycles;
+				uMaxRDCount = 1;
+			}
+
+			uNumGoodSamples++;
+		}
+
+		// Showing all the statistics.
+		if (uNumGoodSamples)
+		{
+			// E(X) = Sum(X)/N
+			fSumSamples /= uNumGoodSamples;
+			// Var(X) = Sum(X^2)/N - E(X)*E(X)
+			fSumSampleSquares = fSumSampleSquares / uNumGoodSamples - fSumSamples * fSumSamples;
+
+			fSumCycles /= uNumGoodSamples;
+			fprintf(stdout, "Mean of all %u samples: %lf\n", uNumGoodSamples, fSumSamples);
+			fprintf(stdout, "Variance of all %u samples: %lf\n", uNumGoodSamples, fSumSampleSquares);
+			fprintf(stdout, "On average each GaussianRandVec() call costs %lf cycles.\n", fSumCycles);
+			fprintf(stdout, "Minimum cycles GaussianRandVec() took is %lu cycles, occurring %lu times.\n", uMinRDCycles, uMinRDCount);
+			fprintf(stdout, "Maximum cycles GaussianRandVec() took is %lu cycles, occurring %lu times.\n", uMaxRDCycles, uMaxRDCount);
 		}
 		else
 		{
