@@ -92,3 +92,16 @@ bool	supportAVX2()
 	// EBX, ECX and EDX are returned in cpuInfo[1-3].
 	return !!(cpuInfo[1] & 0x00000020);
 }
+
+// supportAVX512F() returns TRUE if the CPU where the code is executed supports
+// AVX-512 Foundation feature.  Please refer to
+//     https://en.wikipedia.org/wiki/CPUID
+// for more information.
+bool	supportAVX512F()
+{
+	int		cpuInfo[4];
+
+	__cpuid(cpuInfo, 7);
+	// EBX, ECX and EDX are returned in cpuInfo[1-3].
+	return !!(cpuInfo[1] & 0x00010000);
+}

@@ -256,10 +256,29 @@ int main(int argc, char* argv[])
 		unsigned int      uMaxRDCycles = 0, uMaxRDCount = 0;
 		unsigned long long  ulClockBefore, ulClockAfter;
 		double (*GaussianRand_ptr)() = NULL;
+		unsigned int	  uGaussianBinCounts[NUM_GAUSSIAN_BINS];
+		double			  dfGaussianBinGap = 2.0 * GAUSSIAN_BIN_RANGE / NUM_GAUSSIAN_BINS;
+
+		if (isIntel())
+		{
+			fprintf(stdout, "The running platform is based on Intel processors.\n\n\n");
+		}
+		else if (isAMD())
+		{
+			fprintf(stdout, "The running platform is based on AMD processors.\n\n\n");
+		}
+		else
+		{
+			fprintf(stdout, "The running platform is based on processors of an unknown brand.\n");
+			return 1;
+		}
 
 		uNumGoodSamples = 0;
 		// Using GaussianRandVec() when both AVX and AVX2 are supported.
-		GaussianRand_ptr = (supportAVX() && supportAVX2()) ? GaussianRandVec : GaussianRand;
+		GaussianRand_ptr = supportAVX512F() ? GaussianRandVec : GaussianRand;
+
+		for (i = 0; i < NUM_GAUSSIAN_BINS; i++)
+			uGaussianBinCounts[i] = 0;
 
 		for (i = 0; i < NUM_RDRAND_ITERATIONS; i++) {
 
@@ -270,6 +289,11 @@ int main(int argc, char* argv[])
 			// Updating all the related statistics.
 			fSumSamples += fRdSample;
 			fSumSampleSquares += fRdSample * fRdSample;
+
+			// Which bin will dfGaussianRandNum fall in?
+			int		iBinIndex = (int)((fRdSample + GAUSSIAN_BIN_RANGE) / dfGaussianBinGap);
+			if ((iBinIndex >= 0) && (iBinIndex < NUM_GAUSSIAN_BINS))
+				uGaussianBinCounts[iBinIndex]++;
 
 			unsigned long   uElapsedCycles = (unsigned long)(ulClockAfter - ulClockBefore);
 			fSumCycles += (double)uElapsedCycles;
@@ -316,6 +340,13 @@ int main(int argc, char* argv[])
 		{
 			fprintf(stderr, "We did not generate any good random number samples in %u tries.\n", NUM_RDRAND_ITERATIONS);
 		}
+		fprintf(stdout, "\n\n\n");
+
+		// Printing out the Gaussian bin counts.
+		for (i = 0; i < NUM_GAUSSIAN_BINS; i++)
+			fprintf(stdout, "%2dth bin (from %+f to %+f) contains %5d samples.\n", i,
+				(-GAUSSIAN_BIN_RANGE + i * dfGaussianBinGap), (-GAUSSIAN_BIN_RANGE + (i + 1) * dfGaussianBinGap),
+				uGaussianBinCounts[i]);
 	}
 
 	return 0;
